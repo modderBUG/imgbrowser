@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片浏览 - 瀑布流展示</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1><i class="fas fa-images"></i> 图片浏览器</h1>
+            <p class="subtitle">优雅的瀑布流布局，无限滚动加载</p>
+            <div class="stats">
+                <span id="total-images">0 张图片</span>
+                <span id="loaded-count">已加载 0 张</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="controls">
+            <div class="view-options">
+                <button class="btn active" data-view="waterfall"><i class="fas fa-th"></i> 瀑布流</button>
+                <button class="btn" data-view="grid"><i class="fas fa-grid"></i> 网格</button>
+                <button class="btn" data-view="list"><i class="fas fa-list"></i> 列表</button>
+            </div>
+            <div class="nav-tabs">
+                <button class="tab-btn active" data-show="all"><i class="fas fa-images"></i> 所有图片</button>
+                <button class="tab-btn" data-show="favorites"><i class="fas fa-heart"></i> 收藏夹</button>
+                <button class="tab-btn" data-show="deleted"><i class="fas fa-trash"></i> 回收站</button>
+            </div>
+            <div class="sort-options">
+                <label for="sort">排序：</label>
+                <select id="sort">
+                    <option value="name">按文件名</option>
+                    <option value="newest">最新</option>
+                    <option value="oldest">最旧</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="gallery" class="gallery waterfall">
+            <!-- 图片将通过 JS 动态插入 -->
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"><i class="fas fa-spinner fa-spin"></i></div>
+            <p>正在加载更多图片...</p>
+        </div>
+
+        <div id="end-message" class="end-message">
+            <p><i class="fas fa-flag-checkered"></i> 已加载所有图片</p>
+        </div>
+
+        <!-- 大图查看模态框 -->
+        <div id="image-modal" class="image-modal">
+            <div class="modal-content">
+                <button class="modal-close"><i class="fas fa-times"></i></button>
+                <div class="modal-image-container">
+                    <img id="modal-image" src="" alt="">
+                    <div class="modal-controls">
+                        <button class="modal-btn prev-btn"><i class="fas fa-chevron-left"></i></button>
+                        <button class="modal-btn next-btn"><i class="fas fa-chevron-right"></i></button>
+                        <button class="modal-btn favorite-btn"><i class="fas fa-heart"></i></button>
+                        <button class="modal-btn delete-btn"><i class="fas fa-trash"></i></button>
+                        <button class="modal-btn zoom-btn"><i class="fas fa-search-plus"></i></button>
+                    </div>
+                </div>
+                <div class="modal-info">
+                    <h3 id="modal-filename"></h3>
+                    <p id="modal-details"></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="back-to-top">
+            <button id="backToTop" class="btn-top"><i class="fas fa-chevron-up"></i></button>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>使用 TypeScript + Node.js 构建 • 图片来自 <code>images/</code> 目录</p>
+            <p class="links">
+                <a href="/api/images" target="_blank"><i class="fas fa-code"></i> API</a>
+                <a href="https://github.com" target="_blank"><i class="fab fa-github"></i> GitHub</a>
+            </p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
