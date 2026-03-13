@@ -13,10 +13,96 @@ import {
   ImageRecord
 } from './db';
 
+// 扩展Request类型以包含cookies属性
+declare global {
+  namespace Express {
+    interface Request {
+      cookies: Record<string, string>;
+    }
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const IMAGES_DIR = process.env.IMAGES_DIR || 'C:\\Users\\wwwwi\\Downloads';
 const REMOVED_DIR = path.join(process.cwd(), 'remove');
+const PASSWORD = process.env.APP_PASSWORD || 'password123';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'imgbrowser-secret-key';
+
+// 简单的会话存储（内存中）
+interface Session {
+  id: string;
+  authenticated: boolean;
+  createdAt: number;
+}
+
+const sessions = new Map<string, Session>();
+
+// 生成随机会话ID
+function generateSessionId(): string {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+// 验证会话
+function verifySession(req: Request): boolean {
+  const sessionId = req.cookies?.sessionId;
+  if (!sessionId) return false;
+  
+  const session = sessions.get(sessionId);
+  if (!session) return false;
+  
+  // 检查会话是否过期（24小时）
+  const now = Date.now();
+  const sessionAge = now - session.createdAt;
+  const maxAge = 24 * 60 * 60 * 1000; // 24小时
+  
+  if (sessionAge > maxAge) {
+    sessions.delete(sessionId);
+    return false;
+  }
+  
+  return session.authenticated;
+}
+
+// 认证中间件
+function requireAuth(req: Request, res: Response, next: Function) {
+  // 允许访问登录页面和静态文件
+  const allowedPaths = [
+    '/login.html',
+    '/api/login',
+    '/api/logout',
+    '/api/auth/status',
+    '/style.css',
+    '/script.js',
+    '/favicon.ico',
+    '/images/',
+    '/removed/'
+  ];
+  
+  const isAllowed = allowedPaths.some(path => 
+    req.path === path || req.path.startsWith(path)
+  );
+  
+  if (isAllowed) {
+    return next();
+  }
+  
+  // 允许访问根路径（会重定向到登录页面）
+  if (req.path === '/' || req.path === '') {
+    return next();
+  }
+  
+  if (verifySession(req)) {
+    next();
+  } else {
+    // 对于API请求返回401，对于页面请求重定向到登录页面
+    if (req.path.startsWith('/api/')) {
+      res.status(401).json({ error: '未授权访问' });
+    } else {
+      res.redirect('/login.html');
+    }
+  }
+}
 
 // 确保目录存在
 if (!fs.existsSync(IMAGES_DIR)) {
@@ -31,8 +117,78 @@ app.use('/images', express.static(IMAGES_DIR));
 app.use('/removed', express.static(REMOVED_DIR));
 app.use(express.static(path.join(process.cwd(), 'public')));
 
-// 解析 JSON 请求体
+// 解析 JSON 请求体和cookies
 app.use(express.json());
+app.use((req, res, next) => {
+  // 简单的cookie解析
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    req.cookies = {};
+    cookieHeader.split(';').forEach(cookie => {
+      const [name, value] = cookie.trim().split('=');
+      if (name && value) {
+        req.cookies[name] = decodeURIComponent(value);
+      }
+    });
+  } else {
+    req.cookies = {};
+  }
+  next();
+});
+
+// 应用认证中间件
+app.use(requireAuth);
+
+// 登录API
+app.post('/api/login', (req: Request, res: Response) => {
+  try {
+    const { password } = req.body;
+    
+    if (!password) {
+      return res.status(400).json({ error: '密码不能为空' });
+    }
+    
+    if (password === PASSWORD) {
+      // 创建新会话
+      const sessionId = generateSessionId();
+      sessions.set(sessionId, {
+        id: sessionId,
+        authenticated: true,
+        createdAt: Date.now()
+      });
+      
+      // 设置cookie（24小时过期）
+      res.cookie('sessionId', sessionId, {
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000, // 24小时
+        sameSite: 'strict'
+      });
+      
+      return res.json({ success: true, message: '登录成功' });
+    } else {
+      return res.status(401).json({ error: '密码错误' });
+    }
+  } catch (err) {
+    console.error('登录处理失败:', err);
+    res.status(500).json({ error: '登录处理失败' });
+  }
+});
+
+// 登出API
+app.post('/api/logout', (req: Request, res: Response) => {
+  const sessionId = req.cookies?.sessionId;
+  if (sessionId) {
+    sessions.delete(sessionId);
+  }
+  res.clearCookie('sessionId');
+  res.json({ success: true, message: '已登出' });
+});
+
+// 检查登录状态API
+app.get('/api/auth/status', (req: Request, res: Response) => {
+  const isAuthenticated = verifySession(req);
+  res.json({ authenticated: isAuthenticated });
+});
 
 // 初始化数据库（扫描图片）
 app.post('/api/init', async (req: Request, res: Response) => {
@@ -209,9 +365,23 @@ app.get('/api/stats', async (req: Request, res: Response) => {
   }
 });
 
-// 根路由返回前端页面
+// 根路由：如果已登录则返回主页面，否则重定向到登录页面
 app.get('/', (req: Request, res: Response) => {
-  res.sendFile(path.join(process.cwd(), 'public/index.html'));
+  if (verifySession(req)) {
+    res.sendFile(path.join(process.cwd(), 'public/index.html'));
+  } else {
+    res.redirect('/login.html');
+  }
+});
+
+// 登录页面路由
+app.get('/login.html', (req: Request, res: Response) => {
+  // 如果已经登录，重定向到主页面
+  if (verifySession(req)) {
+    res.redirect('/');
+  } else {
+    res.sendFile(path.join(process.cwd(), 'public/login.html'));
+  }
 });
 
 // 启动服务器时初始化数据库

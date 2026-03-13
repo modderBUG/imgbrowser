@@ -48,6 +48,9 @@ class ImageGallery {
         // 初始隐藏加载和结束消息
         this.loading.style.display = 'none';
         this.endMessage.style.display = 'none';
+        
+        // 检查认证状态
+        this.checkAuthStatus();
     }
     
     setupEventListeners() {
@@ -79,6 +82,12 @@ class ImageGallery {
         window.addEventListener('scroll', () => {
             this.backToTopBtn.style.display = window.scrollY > 300 ? 'block' : 'none';
         });
+        
+        // 登出按钮
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => this.logout());
+        }
         
         // 模态框事件
         this.modalClose.addEventListener('click', () => this.closeModal());
@@ -141,45 +150,7 @@ class ImageGallery {
         console.log(`切换到 ${this.viewMode} 视图`);
     }
     
-    async loadImages() {
-        if (this.isLoading || !this.hasMore) return;
-        
-        this.isLoading = true;
-        this.loading.style.display = 'block';
-        
-        try {
-            const response = await fetch(`/api/images?page=${this.currentPage}&limit=${this.limit}&sort=${this.sortBy}&show=${this.showMode}`);
-            const data = await response.json();
-            
-            this.totalImages = data.pagination.total;
-            this.hasMore = data.pagination.hasNext;
-            
-            // 保存当前图片列表用于模态框导航
-            if (this.currentPage === 1) {
-                this.currentImages = data.images;
-            } else {
-                this.currentImages = [...this.currentImages, ...data.images];
-            }
-            
-            // 渲染图片
-            data.images.forEach(img => this.addImageCard(img));
-            
-            this.loadedImages += data.images.length;
-            this.currentPage++;
-            
-            this.updateStats();
-            
-            // 如果没有更多图片，显示结束消息
-            if (!this.hasMore) {
-                this.showEndMessage();
-            }
-        } catch (error) {
-            console.error('加载图片失败:', error);
-        } finally {
-            this.isLoading = false;
-            this.loading.style.display = 'none';
-        }
-    }
+
     
     addImageCard(img) {
         const card = document.createElement('div');
@@ -263,13 +234,35 @@ class ImageGallery {
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {
-                    button.classList.toggle('active');
-                    button.title = button.classList.contains('active') ? '取消收藏' : '收藏';
+                    // 从按钮的当前状态推断新的收藏状态
+                    let isFavorited = false;
+                    if (button) {
+                        // 按钮切换后的状态就是新的收藏状态
+                        button.classList.toggle('active');
+                        isFavorited = button.classList.contains('active');
+                        button.title = isFavorited ? '取消收藏' : '收藏';
+                    } else {
+                        // 如果没有按钮参数，从当前图片状态推断
+                        const imageIndex = this.currentImages.findIndex(img => img.id === id);
+                        if (imageIndex !== -1) {
+                            isFavorited = !this.currentImages[imageIndex].favorited;
+                            this.currentImages[imageIndex].favorited = isFavorited;
+                        }
+                    }
                     
-                    // 更新模态框中的按钮状态
+                    // 更新模态框中的按钮状态（如果当前显示的是同一张图片）
                     if (this.currentModalIndex >= 0 && this.currentImages[this.currentModalIndex]?.id === id) {
                         this.favoriteBtn.classList.toggle('active');
                     }
+                    
+                    // 更新当前图片列表中的状态
+                    const imageIndex = this.currentImages.findIndex(img => img.id === id);
+                    if (imageIndex !== -1) {
+                        this.currentImages[imageIndex].favorited = isFavorited;
+                    }
+                    
+                    // 更新图片卡片上的收藏状态
+                    this.updateImageCardFavoriteStatus(id, isFavorited);
                     
                     // 如果在收藏夹视图中，重新加载
                     if (this.showMode === 'favorites') {
@@ -279,6 +272,44 @@ class ImageGallery {
             }
         } catch (error) {
             console.error('切换收藏状态失败:', error);
+        }
+    }
+    
+    updateImageCardFavoriteStatus(id, isFavorited) {
+        // 查找对应的图片卡片
+        const card = document.querySelector(`.image-card[data-id="${id}"]`);
+        if (!card) return;
+        
+        // 更新卡片上的收藏按钮
+        const favoriteBtn = card.querySelector('.favorite-btn');
+        if (favoriteBtn) {
+            favoriteBtn.classList.toggle('active', isFavorited);
+            favoriteBtn.title = isFavorited ? '取消收藏' : '收藏';
+        }
+        
+        // 更新卡片上的"已收藏"文本
+        const imageInfo = card.querySelector('.image-info');
+        if (imageInfo) {
+            // 先查找现有的"已收藏"文本（可能由addImageCard函数创建）
+            let existingFavoritedText = null;
+            const paragraphs = imageInfo.querySelectorAll('p');
+            paragraphs.forEach(p => {
+                if (p.innerHTML.includes('fa-heart') && p.innerHTML.includes('已收藏')) {
+                    existingFavoritedText = p;
+                }
+            });
+            
+            if (isFavorited) {
+                if (!existingFavoritedText) {
+                    const favoritedText = document.createElement('p');
+                    favoritedText.innerHTML = '<i class="fas fa-heart" style="color: #ef4444;"></i> 已收藏';
+                    imageInfo.appendChild(favoritedText);
+                }
+            } else {
+                if (existingFavoritedText) {
+                    existingFavoritedText.remove();
+                }
+            }
         }
     }
     
@@ -545,6 +576,102 @@ class ImageGallery {
         
         // 重新加载
         this.loadImages();
+    }
+    
+    // 检查认证状态
+    async checkAuthStatus() {
+        try {
+            const response = await fetch('/api/auth/status');
+            if (response.ok) {
+                const data = await response.json();
+                if (!data.authenticated) {
+                    // 未认证，重定向到登录页面
+                    window.location.href = '/login.html';
+                }
+            } else {
+                // API请求失败，可能是未认证
+                window.location.href = '/login.html';
+            }
+        } catch (error) {
+            console.error('检查认证状态失败:', error);
+            // 网络错误，可能是服务器问题
+        }
+    }
+    
+    // 登出
+    async logout() {
+        if (!confirm('确定要登出吗？')) return;
+        
+        try {
+            const response = await fetch('/api/logout', {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                // 登出成功，重定向到登录页面
+                window.location.href = '/login.html';
+            } else {
+                alert('登出失败，请重试');
+            }
+        } catch (error) {
+            console.error('登出失败:', error);
+            alert('登出失败，请检查网络连接');
+        }
+    }
+    
+    // 修改loadImages方法以处理认证错误
+    async loadImages() {
+        if (this.isLoading || !this.hasMore) return;
+        
+        this.isLoading = true;
+        this.loading.style.display = 'block';
+        
+        try {
+            const response = await fetch(`/api/images?page=${this.currentPage}&limit=${this.limit}&sort=${this.sortBy}&show=${this.showMode}`);
+            
+            if (response.status === 401) {
+                // 未授权，重定向到登录页面
+                window.location.href = '/login.html';
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            this.totalImages = data.pagination.total;
+            this.hasMore = data.pagination.hasNext;
+            
+            // 保存当前图片列表用于模态框导航
+            if (this.currentPage === 1) {
+                this.currentImages = data.images;
+            } else {
+                this.currentImages = [...this.currentImages, ...data.images];
+            }
+            
+            // 渲染图片
+            data.images.forEach(img => this.addImageCard(img));
+            
+            this.loadedImages += data.images.length;
+            this.currentPage++;
+            
+            this.updateStats();
+            
+            // 如果没有更多图片，显示结束消息
+            if (!this.hasMore) {
+                this.showEndMessage();
+            }
+        } catch (error) {
+            console.error('加载图片失败:', error);
+            if (error.message.includes('401')) {
+                window.location.href = '/login.html';
+            }
+        } finally {
+            this.isLoading = false;
+            this.loading.style.display = 'none';
+        }
     }
 }
 

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片浏览器 - 登录</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .login-box {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+            padding: 3rem;
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+        
+        .login-header {
+            margin-bottom: 2rem;
+        }
+        
+        .login-header h1 {
+            font-size: 2.5rem;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+        
+        .login-header h1 i {
+            color: #3b82f6;
+            margin-right: 15px;
+        }
+        
+        .login-header p {
+            color: #64748b;
+            font-size: 1.1rem;
+        }
+        
+        .login-form {
+            margin-bottom: 2rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #475569;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .login-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .login-btn:hover {
+            background: linear-gradient(90deg, #2563eb, #1d4ed8);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.3);
+        }
+        
+        .login-btn:active {
+            transform: translateY(0);
+        }
+        
+        .error-message {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            display: none;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        .error-message i {
+            margin-right: 8px;
+        }
+        
+        .login-footer {
+            color: #64748b;
+            font-size: 0.9rem;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e2e8f0;
+        }
+        
+        .login-footer a {
+            color: #3b82f6;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .login-footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 480px) {
+            .login-box {
+                padding: 2rem;
+            }
+            
+            .login-header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <h1><i class="fas fa-images"></i> 图片浏览器</h1>
+                <p>请输入密码以访问图片库</p>
+            </div>
+            
+            <div id="errorMessage" class="error-message">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="errorText">密码错误，请重试</span>
+            </div>
+            
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="password"><i class="fas fa-lock"></i> 密码</label>
+                    <input type="password" id="password" name="password" placeholder="请输入访问密码" required autofocus>
+                </div>
+                
+                <button type="submit" class="login-btn">
+                    <i class="fas fa-sign-in-alt"></i>
+                    登录
+                </button>
+            </form>
+            
+            <div class="login-footer">
+                <p>这是一个私有图片浏览器，仅限授权用户访问。</p>
+                <p>默认密码：<code>password123</code>（可在环境变量中配置）</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginForm = document.getElementById('loginForm');
+            const errorMessage = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+            const passwordInput = document.getElementById('password');
+            
+            // 检查URL中的错误参数
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('error')) {
+                errorText.textContent = decodeURIComponent(urlParams.get('error'));
+                errorMessage.classList.add('show');
+            }
+            
+            // 表单提交处理
+            loginForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const password = passwordInput.value.trim();
+                
+                if (!password) {
+                    errorText.textContent = '请输入密码';
+                    errorMessage.classList.add('show');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ password })
+                    });
+                    
+                    if (response.ok) {
+                        // 登录成功，重定向到主页面
+                        window.location.href = '/';
+                    } else {
+                        const data = await response.json();
+                        errorText.textContent = data.error || '登录失败';
+                        errorMessage.classList.add('show');
+                        passwordInput.focus();
+                        passwordInput.select();
+                    }
+                } catch (error) {
+                    errorText.textContent = '网络错误，请检查连接';
+                    errorMessage.classList.add('show');
+                    console.error('登录错误:', error);
+                }
+            });
+            
+            // 输入时隐藏错误消息
+            passwordInput.addEventListener('input', function() {
+                errorMessage.classList.remove('show');
+            });
+            
+            // 自动聚焦密码输入框
+            passwordInput.focus();
+        });
+    </script>
+</body>
+</html>
