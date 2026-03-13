@@ -26,7 +26,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const IMAGES_DIR = process.env.IMAGES_DIR || 'C:\\Users\\wwwwi\\Downloads';
 const REMOVED_DIR = path.join(process.cwd(), 'remove');
-const PASSWORD = process.env.APP_PASSWORD || 'password123';
+const PASSWORD = process.env.APP_PASSWORD || '1122334';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'imgbrowser-secret-key';
 
 // 简单的会话存储（内存中）
