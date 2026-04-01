@@ -25,3 +25,12 @@ remove/
 # 忽略操作系统文件
 .DS_Store
 Thumbs.db
+
+# 忽略 Docker 相关文件
+.dockerignore
+Dockerfile
+docker-compose*.yml
+
+# 忽略环境变量文件
+.env
+.env.*

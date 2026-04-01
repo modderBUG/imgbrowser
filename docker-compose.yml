@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  imgbrowser:
+    build: .
+    container_name: imgbrowser
+    ports:
+      - "8211:3000"
+    environment:
+      - APP_PASSWORD=1122334
+      - PORT=3000
+      - IMAGES_DIR=/app/images
+      - NODE_ENV=production
+    volumes:
+      - ./images:/app/images
+      - ./remove:/app/remove
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/auth/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

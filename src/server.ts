@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+import cookieParser from 'cookie-parser';
 import {
   scanAndInsertImages,
   getAllImages,
@@ -10,6 +12,7 @@ import {
   permanentlyDelete,
   emptyTrash,
   getStats,
+  closeDb,
   ImageRecord
 } from './db';
 
@@ -26,8 +29,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const IMAGES_DIR = process.env.IMAGES_DIR || 'C:\\Users\\wwwwi\\Downloads';
 const REMOVED_DIR = path.join(process.cwd(), 'remove');
-const PASSWORD = process.env.APP_PASSWORD || '1122334';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'imgbrowser-secret-key';
+const PASSWORD = process.env.APP_PASSWORD;
+if (!PASSWORD) {
+  console.error('ERROR: APP_PASSWORD environment variable is required');
+  process.exit(1);
+}
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
 // 简单的会话存储（内存中）
 interface Session {
@@ -40,7 +47,7 @@ const sessions = new Map<string, Session>();
 
 // 生成随机会话ID
 function generateSessionId(): string {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  return crypto.randomBytes(32).toString('hex');
 }
 
 // 验证会话
@@ -112,6 +119,14 @@ if (!fs.existsSync(REMOVED_DIR)) {
   fs.mkdirSync(REMOVED_DIR, { recursive: true });
 }
 
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
+
 // 静态文件服务
 app.use('/images', express.static(IMAGES_DIR));
 app.use('/removed', express.static(REMOVED_DIR));
@@ -119,22 +134,7 @@ app.use(express.static(path.join(process.cwd(), 'public')));
 
 // 解析 JSON 请求体和cookies
 app.use(express.json());
-app.use((req, res, next) => {
-  // 简单的cookie解析
-  const cookieHeader = req.headers.cookie;
-  if (cookieHeader) {
-    req.cookies = {};
-    cookieHeader.split(';').forEach(cookie => {
-      const [name, value] = cookie.trim().split('=');
-      if (name && value) {
-        req.cookies[name] = decodeURIComponent(value);
-      }
-    });
-  } else {
-    req.cookies = {};
-  }
-  next();
-});
+app.use(cookieParser());
 
 // 应用认证中间件
 app.use(requireAuth);
@@ -201,6 +201,23 @@ app.post('/api/init', async (req: Request, res: Response) => {
   }
 });
 
+// 简单的响应缓存（内存中，5 分钟过期）
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+const cache = new Map<string, CacheEntry>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 分钟
+
+// 清除所有图片缓存
+function clearImageCache(): void {
+  for (const [key] of cache.entries()) {
+    if (key.startsWith('images-')) {
+      cache.delete(key);
+    }
+  }
+}
+
 // 获取图片列表的 API
 app.get('/api/images', async (req: Request, res: Response) => {
   try {
@@ -208,6 +225,14 @@ app.get('/api/images', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 20;
     const sort = (req.query.sort as string) || 'name';
     const show = (req.query.show as string) || 'all';
+    
+    // 检查缓存
+    const cacheKey = `images-${page}-${limit}-${sort}-${show}`;
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      return res.json(cached.data);
+    }
+    
     const offset = (page - 1) * limit;
 
     // 从数据库获取图片
@@ -242,7 +267,7 @@ app.get('/api/images', async (req: Request, res: Response) => {
       };
     });
 
-    res.json({
+    const response = {
       images,
       pagination: {
         page,
@@ -252,7 +277,15 @@ app.get('/api/images', async (req: Request, res: Response) => {
         hasNext: offset + limit < total,
         hasPrev: page > 1
       }
+    };
+    
+    // 存储到缓存
+    cache.set(cacheKey, {
+      data: response,
+      timestamp: Date.now()
     });
+    
+    res.json(response);
   } catch (err) {
     console.error('获取图片列表失败:', err);
     res.status(500).json({ error: '获取图片列表失败' });
@@ -270,6 +303,7 @@ app.post('/api/images/:id/favorite', async (req: Request, res: Response) => {
     
     const success = await toggleFavorite(id);
     if (success) {
+      clearImageCache();
       res.json({ success: true });
     } else {
       res.status(404).json({ error: '图片不存在' });
@@ -291,6 +325,7 @@ app.post('/api/images/:id/delete', async (req: Request, res: Response) => {
     
     const success = await markAsDeleted(id);
     if (success) {
+      clearImageCache();
       res.json({ success: true });
     } else {
       res.status(404).json({ error: '图片不存在或删除失败' });
@@ -312,6 +347,7 @@ app.post('/api/images/:id/restore', async (req: Request, res: Response) => {
     
     const success = await restoreImage(id);
     if (success) {
+      clearImageCache();
       res.json({ success: true });
     } else {
       res.status(404).json({ error: '图片不存在或恢复失败' });
@@ -333,6 +369,7 @@ app.delete('/api/images/:id', async (req: Request, res: Response) => {
     
     const success = await permanentlyDelete(id);
     if (success) {
+      clearImageCache();
       res.json({ success: true });
     } else {
       res.status(404).json({ error: '图片不存在' });
@@ -347,6 +384,7 @@ app.delete('/api/images/:id', async (req: Request, res: Response) => {
 app.post('/api/trash/empty', async (req: Request, res: Response) => {
   try {
     const deletedCount = await emptyTrash();
+    clearImageCache();
     res.json({ success: true, deletedCount });
   } catch (err) {
     console.error('清空回收站失败:', err);
@@ -363,6 +401,17 @@ app.get('/api/stats', async (req: Request, res: Response) => {
     console.error('获取统计信息失败:', err);
     res.status(500).json({ error: '获取统计信息失败' });
   }
+});
+
+// 404 错误处理
+app.use((req, res, next) => {
+  res.status(404).json({ error: '资源不存在' });
+});
+
+// 全局错误处理中间件
+app.use((err: Error, req: Request, res: Response, next: Function) => {
+  console.error('服务器错误:', err);
+  res.status(500).json({ error: '服务器内部错误' });
 });
 
 // 根路由：如果已登录则返回主页面，否则重定向到登录页面
@@ -384,8 +433,60 @@ app.get('/login.html', (req: Request, res: Response) => {
   }
 });
 
+// 定期清理过期会话（每 1 小时）
+setInterval(() => {
+  const now = Date.now();
+  const maxAge = 24 * 60 * 60 * 1000; // 24 小时
+  
+  for (const [sessionId, session] of sessions.entries()) {
+    if (now - session.createdAt > maxAge) {
+      sessions.delete(sessionId);
+    }
+  }
+}, 60 * 60 * 1000);
+
+// 定期清理过期缓存（每 10 分钟）
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of cache.entries()) {
+    if (now - entry.timestamp > CACHE_DURATION) {
+      cache.delete(key);
+    }
+  }
+}, 10 * 60 * 1000);
+
+let server: any = null;
+
+// 优雅关闭服务器
+const gracefulShutdown = async (signal: string) => {
+  console.log(`\n收到 ${signal} 信号，正在关闭服务器...`);
+  
+  // 关闭数据库连接
+  closeDb();
+  
+  // 关闭服务器
+  if (server) {
+    server.close(() => {
+      console.log('服务器已关闭');
+      process.exit(0);
+    });
+  } else {
+    console.log('服务器已关闭');
+    process.exit(0);
+  }
+  
+  // 如果 10 秒后仍未关闭，强制退出
+  setTimeout(() => {
+    console.error('强制关闭服务器');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // 启动服务器时初始化数据库
-app.listen(PORT, async () => {
+server = app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log('正在初始化数据库...');
   try {

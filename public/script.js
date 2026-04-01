@@ -36,12 +36,14 @@ class ImageGallery {
         this.isZoomed = false;
         this.dragStart = { x: 0, y: 0 };
         this.imageOffset = { x: 0, y: 0 };
+        this.imageObserver = null;
         
         this.init();
     }
     
     init() {
         this.setupEventListeners();
+        this.setupLazyLoading();
         this.loadImages();
         this.updateStats();
         
@@ -53,9 +55,34 @@ class ImageGallery {
         this.checkAuthStatus();
     }
     
+    setupLazyLoading() {
+        const isMobile = window.innerWidth < 768;
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const img = entry.target;
+                    if (img.dataset.src) {
+                        img.src = img.dataset.src;
+                        img.removeAttribute('data-src');
+                        observer.unobserve(img);
+                    }
+                }
+            });
+        }, {
+            rootMargin: isMobile ? '100px' : '200px',
+            threshold: 0.01
+        });
+        
+        this.imageObserver = observer;
+    }
+    
     setupEventListeners() {
-        // 无限滚动
-        window.addEventListener('scroll', () => this.handleScroll());
+        // 无限滚动（使用防抖优化）
+        let scrollTimeout;
+        window.addEventListener('scroll', () => {
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(() => this.handleScroll(), 100);
+        });
         
         // 视图切换按钮
         document.querySelectorAll('.view-options .btn').forEach(btn => {
@@ -78,9 +105,13 @@ class ImageGallery {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
         
-        // 显示/隐藏返回顶部按钮
+        // 显示/隐藏返回顶部按钮（使用防抖优化）
+        let backToTopTimeout;
         window.addEventListener('scroll', () => {
-            this.backToTopBtn.style.display = window.scrollY > 300 ? 'block' : 'none';
+            clearTimeout(backToTopTimeout);
+            backToTopTimeout = setTimeout(() => {
+                this.backToTopBtn.style.display = window.scrollY > 300 ? 'block' : 'none';
+            }, 100);
         });
         
         // 登出按钮
@@ -105,9 +136,19 @@ class ImageGallery {
         
         // 图片拖拽
         this.modalImage.addEventListener('mousedown', (e) => this.startDrag(e));
-        this.modalImage.addEventListener('touchstart', (e) => this.startDrag(e.touches[0]));
+        this.modalImage.addEventListener('touchstart', (e) => {
+            if (this.isZoomed) {
+                e.preventDefault();
+            }
+            this.startDrag(e.touches[0]);
+        }, { passive: false });
         document.addEventListener('mousemove', (e) => this.drag(e));
-        document.addEventListener('touchmove', (e) => this.drag(e.touches[0]));
+        document.addEventListener('touchmove', (e) => {
+            if (this.isZoomed) {
+                e.preventDefault();
+            }
+            this.drag(e.touches[0]);
+        }, { passive: false });
         document.addEventListener('mouseup', () => this.endDrag());
         document.addEventListener('touchend', () => this.endDrag());
         
@@ -152,37 +193,39 @@ class ImageGallery {
     
 
     
-    addImageCard(img) {
+   addImageCard(img) {
         const card = document.createElement('div');
         card.className = `image-card ${img.deleted ? 'deleted' : ''}`;
         card.dataset.id = img.id;
+        card.style.animation = `card-fade-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) backwards`;
+        card.style.animationDelay = `${this.loadedImages * 0.05}s`;
         
-        // 从URL提取图片尺寸信息（模拟）
-        const width = 300 + Math.floor(Math.random() * 200);
-        const height = 200 + Math.floor(Math.random() * 300);
+        // 使用占位符尺寸，实际尺寸由 CSS 控制
+        const width = 300;
+        const height = 200;
         
         // 操作按钮
         const actionsHtml = img.deleted ? `
             <div class="image-actions">
-                <button class="action-btn restore-btn" title="恢复"><i class="fas fa-undo"></i></button>
-                <button class="action-btn delete-btn" title="永久删除"><i class="fas fa-trash-alt"></i></button>
+                <button class="action-btn restore-btn" title="RESTORE"><i class="fas fa-undo"></i></button>
+                <button class="action-btn delete-btn" title="PERMANENT DELETE"><i class="fas fa-trash-alt"></i></button>
             </div>
         ` : `
             <div class="image-actions">
-                <button class="action-btn favorite-btn ${img.favorited ? 'active' : ''}" title="${img.favorited ? '取消收藏' : '收藏'}">
+                <button class="action-btn favorite-btn ${img.favorited ? 'active' : ''}" title="${img.favorited ? 'UNFAVORITE' : 'FAVORITE'}">
                     <i class="fas fa-heart"></i>
                 </button>
-                <button class="action-btn delete-btn" title="删除"><i class="fas fa-trash"></i></button>
+                <button class="action-btn delete-btn" title="DELETE"><i class="fas fa-trash"></i></button>
             </div>
         `;
         
         card.innerHTML = `
             ${actionsHtml}
-            <img src="${img.url}" alt="${img.filename}" loading="lazy" width="${width}" height="${height}">
+            <img data-src="${img.url}" alt="${img.filename}" width="${width}" height="${height}" class="lazy-image">
             <div class="image-info">
                 <h3>${img.filename}</h3>
-                <p><i class="fas fa-file-image"></i> ${width} × ${height} px</p>
-                ${img.favorited ? '<p><i class="fas fa-heart" style="color: #ef4444;"></i> 已收藏</p>' : ''}
+                <p><i class="fas fa-file-image"></i> ${width} × ${height} PX</p>
+                ${img.favorited ? '<p><i class="fas fa-heart"></i> FAVORITED</p>' : ''}
             </div>
         `;
         
@@ -223,6 +266,12 @@ class ImageGallery {
         }
         
         this.gallery.appendChild(card);
+        
+        // 观察图片以进行懒加载
+        const lazyImage = card.querySelector('.lazy-image');
+        if (lazyImage && this.imageObserver) {
+            this.imageObserver.observe(lazyImage);
+        }
     }
     
     async toggleFavorite(id, button) {
@@ -314,7 +363,7 @@ class ImageGallery {
     }
     
     async deleteImage(id, card) {
-        if (!confirm('确定要删除这张图片吗？图片将移动到回收站。')) return;
+        if (!confirm('DELETE THIS IMAGE? IT WILL BE MOVED TO TRASH.')) return;
         
         try {
             const response = await fetch(`/api/images/${id}/delete`, {
@@ -396,7 +445,7 @@ class ImageGallery {
     }
     
     async permanentlyDelete(id, card) {
-        if (!confirm('确定要永久删除这张图片吗？此操作不可撤销。')) return;
+        if (!confirm('PERMANENTLY DELETE THIS IMAGE? THIS ACTION CANNOT BE UNDONE.')) return;
         
         try {
             const response = await fetch(`/api/images/${id}`, {
@@ -433,21 +482,36 @@ class ImageGallery {
         this.resetImageTransform();
     }
     
-    showImageInModal() {
+  showImageInModal() {
         const img = this.currentImages[this.currentModalIndex];
         if (!img) return;
         
-        this.modalImage.src = img.url;
-        this.modalFilename.textContent = img.filename;
-        this.modalDetails.textContent = `尺寸: ${img.width || '未知'} × ${img.height || '未知'} | 创建时间: ${new Date(img.created_at).toLocaleString()}`;
+        // 添加过渡动画
+        this.modalImage.style.opacity = '0';
+        this.modalImage.style.transform = 'scale(0.95)';
         
-        // 更新按钮状态
-        this.favoriteBtn.classList.toggle('active', img.favorited);
-        this.deleteBtn.innerHTML = img.deleted ? '<i class="fas fa-trash-alt"></i>' : '<i class="fas fa-trash"></i>';
-        this.deleteBtn.title = img.deleted ? '永久删除' : '删除';
-        
-        // 重置缩放和位置
-        this.resetImageTransform();
+        setTimeout(() => {
+            this.modalImage.src = img.url;
+            this.modalFilename.textContent = img.filename.toUpperCase();
+            this.modalDetails.textContent = `CREATED: ${new Date(img.created_at).toLocaleString()}`;
+            
+            // 等待图片加载后显示尺寸
+            this.modalImage.onload = () => {
+              this.modalDetails.textContent = `SIZE: ${this.modalImage.naturalWidth} × ${this.modalImage.naturalHeight} | CREATED: ${new Date(img.created_at).toLocaleString()}`;
+            };
+            
+            // 更新按钮状态
+            this.favoriteBtn.classList.toggle('active', img.favorited);
+            this.deleteBtn.innerHTML = img.deleted ? '<i class="fas fa-trash-alt"></i>' : '<i class="fas fa-trash"></i>';
+            this.deleteBtn.title = img.deleted ? 'PERMANENT DELETE' : 'DELETE';
+            
+            // 重置缩放和位置
+            this.resetImageTransform();
+            
+            // 淡入动画
+            this.modalImage.style.opacity = '1';
+            this.modalImage.style.transform = 'scale(1)';
+        }, 200);
     }
     
     showPrevImage() {
@@ -508,8 +572,11 @@ class ImageGallery {
     
     drag(e) {
         if (!this.isZoomed) return;
-        e.preventDefault();
-        this.imageOffset = { x: e.clientX - this.dragStart.x, y: e.clientY - this.dragStart.y };
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        if (!clientX || !clientY) return;
+        
+        this.imageOffset = { x: clientX - this.dragStart.x, y: clientY - this.dragStart.y };
         this.modalImage.style.transform = `scale(2) translate(${this.imageOffset.x}px, ${this.imageOffset.y}px)`;
     }
     
@@ -546,8 +613,8 @@ class ImageGallery {
     }
     
     updateStats() {
-        this.totalImagesSpan.textContent = `${this.totalImages} 张图片`;
-        this.loadedCountSpan.textContent = `已加载 ${this.loadedImages} 张`;
+        this.totalImagesSpan.textContent = `${this.totalImages} IMAGES`;
+        this.loadedCountSpan.textContent = `LOADED ${this.loadedImages}`;
     }
     
     showEndMessage() {
@@ -559,8 +626,11 @@ class ImageGallery {
         const windowHeight = window.innerHeight;
         const docHeight = document.documentElement.scrollHeight;
         
-        // 滚动到底部附近（距离底部 200px 内）时加载更多
-        if (docHeight - (scrollTop + windowHeight) < 200) {
+        // 根据屏幕宽度动态调整滚动阈值
+        const threshold = window.innerWidth < 768 ? 100 : 200;
+        
+        // 滚动到底部附近时加载更多
+        if (docHeight - (scrollTop + windowHeight) < threshold) {
             this.loadImages();
         }
     }
@@ -573,6 +643,7 @@ class ImageGallery {
         this.hasMore = true;
         this.endMessage.style.display = 'none';
         this.currentImages = [];
+        this.currentModalIndex = -1;
         
         // 重新加载
         this.loadImages();
@@ -600,7 +671,7 @@ class ImageGallery {
     
     // 登出
     async logout() {
-        if (!confirm('确定要登出吗？')) return;
+        if (!confirm('LOGOUT?')) return;
         
         try {
             const response = await fetch('/api/logout', {

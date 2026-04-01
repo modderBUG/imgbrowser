@@ -44,10 +44,10 @@ function initDb(): void {
   console.log('数据库初始化完成');
 }
 
-export function scanAndInsertImages(): Promise<void> {
+export async function scanAndInsertImages(): Promise<void> {
+  const db = getDb();
+  
   return new Promise((resolve, reject) => {
-    const db = getDb();
-    
     fs.readdir(IMAGES_DIR, (err, files) => {
       if (err) {
         console.error('读取图片目录失败:', err);
@@ -61,14 +61,14 @@ export function scanAndInsertImages(): Promise<void> {
         return imageExtensions.includes(ext);
       });
 
-      let processed = 0;
-      const total = imageFiles.length;
-
-      if (total === 0) {
+      if (imageFiles.length === 0) {
         console.log('未找到图片文件');
         resolve();
         return;
       }
+
+     let processed = 0;
+      const total = imageFiles.length;
 
       db.serialize(() => {
         db.run('BEGIN TRANSACTION');
@@ -90,7 +90,7 @@ export function scanAndInsertImages(): Promise<void> {
                   if (err) {
                     console.error('插入图片失败:', err);
                   } else {
-                    console.log(`插入图片: ${file}`);
+                    console.log(`插入图片：${file}`);
                   }
                   processed++;
                   if (processed === total) {
@@ -113,7 +113,7 @@ export function scanAndInsertImages(): Promise<void> {
           });
         });
       });
-    });
+ });
   });
 }
 
@@ -170,27 +170,17 @@ export function toggleFavorite(id: number): Promise<boolean> {
   });
 }
 
-export function markAsDeleted(id: number): Promise<boolean> {
+export async function markAsDeleted(id: number): Promise<boolean> {
+  const db = getDb();
+  
   return new Promise((resolve, reject) => {
-    const db = getDb();
-    
-    db.get<ImageRecord>('SELECT * FROM images WHERE id = ?', [id], (err, image) => {
+    db.get<ImageRecord>('SELECT * FROM images WHERE id = ?', [id], async (err, image) => {
       if (err || !image) {
         reject(err || new Error('图片不存在'));
         return;
       }
 
-      // 更新数据库
-      db.run(
-        'UPDATE images SET deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [id],
-        async function(err) {
-          if (err) {
-            reject(err);
-            return;
-          }
-
-      // 移动文件到回收站目录（使用复制+删除处理跨设备）
+      // 移动文件到回收站目录（使用复制 + 删除处理跨设备）
       try {
         const sourcePath = image.file_path;
         const filename = path.basename(sourcePath);
@@ -201,67 +191,65 @@ export function markAsDeleted(id: number): Promise<boolean> {
         // 删除原文件
         await fs.promises.unlink(sourcePath);
         
-        // 更新文件路径为回收站路径
+        // 更新数据库：标记为删除并更新文件路径
         db.run(
-          'UPDATE images SET file_path = ? WHERE id = ?',
+          'UPDATE images SET deleted = 1, deleted_at = CURRENT_TIMESTAMP, file_path = ? WHERE id = ?',
           [destPath, id],
-          (err) => {
+          function(err) {
             if (err) {
-              console.error('更新文件路径失败:', err);
+              console.error('更新数据库失败:', err);
+              reject(err);
+            } else {
+              console.log(`文件已移动到回收站：${filename}`);
+              resolve(this.changes > 0);
             }
-            console.log(`文件已移动到回收站: ${filename}`);
-            resolve(this.changes > 0);
           }
         );
       } catch (err) {
         console.error('移动文件失败:', err);
-        // 回滚数据库标记
-        db.run('UPDATE images SET deleted = 0, deleted_at = NULL WHERE id = ?', [id]);
         reject(err);
       }
-        }
-      );
-    });
+   });
   });
 }
 
-export function restoreImage(id: number): Promise<boolean> {
+export async function restoreImage(id: number): Promise<boolean> {
+  const db = getDb();
+  
   return new Promise((resolve, reject) => {
-    const db = getDb();
-    
-    db.get<ImageRecord>('SELECT * FROM images WHERE id = ?', [id], (err, image) => {
+    db.get<ImageRecord>('SELECT * FROM images WHERE id = ?', [id], async (err, image) => {
       if (err || !image || !image.deleted) {
         reject(err || new Error('图片不存在或未删除'));
         return;
       }
 
-      // 移动文件回原目录（使用复制+删除处理跨设备）
+      // 移动文件回原目录（使用复制 + 删除处理跨设备）
       const sourcePath = image.file_path;
       const filename = path.basename(sourcePath);
       const destPath = path.join(IMAGES_DIR, filename);
       
-      fs.promises.copyFile(sourcePath, destPath)
-        .then(() => fs.promises.unlink(sourcePath))
-        .then(() => {
-          // 更新数据库
-          db.run(
-            'UPDATE images SET deleted = 0, deleted_at = NULL, file_path = ? WHERE id = ?',
-            [destPath, id],
-            function(err) {
-              if (err) {
-                reject(err);
-              } else {
-                console.log(`文件已恢复: ${filename}`);
-                resolve(this.changes > 0);
-              }
+      try {
+        await fs.promises.copyFile(sourcePath, destPath);
+        await fs.promises.unlink(sourcePath);
+        
+        // 更新数据库
+        db.run(
+          'UPDATE images SET deleted = 0, deleted_at = NULL, file_path = ? WHERE id = ?',
+          [destPath, id],
+          function(err) {
+            if (err) {
+              reject(err);
+            } else {
+              console.log(`文件已恢复：${filename}`);
+              resolve(this.changes > 0);
             }
-          );
-        })
-        .catch(err => {
-          console.error('恢复文件失败:', err);
-          reject(err);
-        });
-    });
+          }
+        );
+      } catch (err) {
+        console.error('恢复文件失败:', err);
+        reject(err);
+      }
+  });
   });
 }
 
@@ -374,4 +362,12 @@ export function getStats(): Promise<{ total: number; favorites: number; deleted:
       });
     });
   });
+}
+
+// 关闭数据库连接
+export function closeDb(): void {
+  if (db) {
+    db.close();
+    db = null;
+  }
 }

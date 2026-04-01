@@ -20,9 +20,9 @@
             background: white;
             border-radius: 16px;
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-            padding: 3rem;
+            padding: clamp(1.5rem, 5vw, 3rem);
             width: 100%;
-            max-width: 450px;
+            max-width: clamp(350px, 90vw, 450px);
             text-align: center;
         }
         
@@ -31,7 +31,7 @@
         }
         
         .login-header h1 {
-            font-size: 2.5rem;
+            font-size: clamp(1.8rem, 5vw, 2.5rem);
             color: #2c3e50;
             margin-bottom: 0.5rem;
         }
@@ -64,10 +64,10 @@
         
         .form-group input {
             width: 100%;
-            padding: 14px 16px;
+            padding: clamp(10px, 2vw, 14px) clamp(12px, 3vw, 16px);
             border: 2px solid #e2e8f0;
             border-radius: 10px;
-            font-size: 1rem;
+            font-size: clamp(0.9rem, 2vw, 1rem);
             font-family: 'Inter', sans-serif;
             transition: border-color 0.3s ease;
         }
@@ -80,12 +80,12 @@
         
         .login-btn {
             width: 100%;
-            padding: 16px;
+            padding: clamp(12px, 3vw, 16px);
             background: linear-gradient(90deg, #3b82f6, #2563eb);
             color: white;
             border: none;
             border-radius: 10px;
-            font-size: 1.1rem;
+            font-size: clamp(0.95rem, 2vw, 1.1rem);
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -142,13 +142,37 @@
             text-decoration: underline;
         }
         
-        @media (max-width: 480px) {
-            .login-box {
-                padding: 2rem;
+        @media (max-width: 576px) {
+            .login-container {
+                padding: 10px;
             }
             
-            .login-header h1 {
-                font-size: 2rem;
+            .login-box {
+                border-radius: 12px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .login-box {
+                padding: 1.5rem 1rem;
+            }
+            
+            .login-header {
+                margin-bottom: 1.5rem;
+            }
+            
+            .login-header p {
+                font-size: 0.95rem;
+            }
+            
+            .form-group {
+                margin-bottom: 1.2rem;
+            }
+            
+            .login-footer {
+                font-size: 0.8rem;
+                margin-top: 1.5rem;
+                padding-top: 1rem;
             }
         }
     </style>
@@ -180,7 +204,7 @@
             
             <div class="login-footer">
                 <p>这是一个私有图片浏览器，仅限授权用户访问。</p>
-                <p>默认密码：<code>password123</code>（可在环境变量中配置）</p>
+                <p>密码由管理员通过 <code>APP_PASSWORD</code> 环境变量配置</p>
             </div>
         </div>
     </div>
