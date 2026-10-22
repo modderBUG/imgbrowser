@@ -1,36 +1,33 @@
-# 忽略 node_modules（会在容器内重新安装）
+# 依赖与构建产物（容器内重新安装 / 编译）
 node_modules
-npm-debug.log
-
-# 忽略构建输出目录
 dist
+npm-debug.log*
 
-# 忽略数据库文件
+# 运行时数据（通过卷挂载）
 *.db
-
-# 忽略图片目录（通过卷挂载）
+*.db-*
+data/
 images/
 remove/
+*.log
 
-# 忽略 IDE 和编辑器文件
+# 版本控制与编辑器
+.git
+.gitignore
 .vscode
 .idea
 *.swp
 *.swo
 
-# 忽略 Git 相关文件
-.git
-.gitignore
-
-# 忽略操作系统文件
+# 操作系统文件
 .DS_Store
 Thumbs.db
 
-# 忽略 Docker 相关文件
+# Docker 自身配置
 .dockerignore
 Dockerfile
 docker-compose*.yml
 
-# 忽略环境变量文件
+# 环境变量（密码不进入镜像）
 .env
 .env.*

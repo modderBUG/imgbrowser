@@ -1,47 +1,35 @@
-# Dependencies
+# 依赖
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Build outputs
+# 构建输出
 dist/
 build/
+
+# 运行时数据：数据库、回收站、图片
+imgbrowser.db
+imgbrowser.db-*
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
 remove/
+data/
 images/
 *.log
 
-# Runtime data
-imgbrowser.db
-*.db
-*.sqlite
-*.sqlite3
-
-# Environment variables
+# 环境变量（只提交 .env.example）
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
 
-# IDE files
+# IDE / 系统文件
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS generated files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
-
-# Temporary files
-tmp/
-temp/
-
-# Images (optional - you might want to keep them)
-# images/
+ehthumbs.db

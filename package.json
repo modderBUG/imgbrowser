@@ -1,31 +1,41 @@
 {
   "name": "imgbrowser",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "ts-node src/server.ts",
-    "dev": "nodemon --exec ts-node src/server.ts",
-    "build": "tsc",
-    "serve": "node dist/server.js"
+  "version": "1.1.0",
+  "private": true,
+  "description": "私有图片浏览器：瀑布流浏览、收藏、回收站与本地图片目录管理",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=18.18.0"
   },
-  "keywords": [],
-  "author": "",
+  "scripts": {
+    "start": "ts-node src/server.ts",
+    "dev": "nodemon --watch src --ext ts --exec \"ts-node src/server.ts\"",
+    "build": "tsc",
+    "serve": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "keywords": [
+    "image-browser",
+    "gallery",
+    "express",
+    "sqlite",
+    "typescript"
+  ],
   "license": "ISC",
   "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.6"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",
     "@types/node": "^25.4.0",
     "@types/sqlite3": "^5.1.0",
-    "cookie-parser": "^1.4.7",
-    "express": "^5.2.1",
     "nodemon": "^3.1.14",
-    "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
-  },
-  "devDependencies": {
-    "@types/cookie-parser": "^1.4.10"
   }
 }

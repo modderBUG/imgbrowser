@@ -1,45 +1,50 @@
-# 使用 Node.js LTS 版本作为基础镜像
-FROM node:18-alpine
+# ---------- 构建阶段：编译 TypeScript ----------
+FROM node:22-alpine AS builder
 
-# 设置工作目录
 WORKDIR /app
 
-# 安装 Python 和 Make 用于编译 sqlite3
+# sqlite3 在没有预编译包的平台上需要从源码构建
 RUN apk add --no-cache python3 make g++
 
-# 复制 package.json 和 package-lock.json
-COPY package*.json ./
-
-# 安装所有依赖
+COPY package.json package-lock.json ./
 RUN npm ci
 
-# 复制 TypeScript 配置文件
 COPY tsconfig.json ./
-
-# 复制源代码
 COPY src ./src
+RUN npm run build && npm prune --omit=dev
+
+
+# ---------- 运行阶段：只保留运行所需文件 ----------
+FROM node:22-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    IMAGES_DIR=/app/images \
+    TRASH_DIR=/app/remove \
+    DB_PATH=/app/data/imgbrowser.db
+
+# tini 负责回收僵尸进程并正确转发信号，让容器的优雅关闭生效
+RUN apk add --no-cache tini \
+    && addgroup -S -g 1000 app \
+    && adduser -S -u 1000 -G app app
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./package.json
 COPY public ./public
 
-# 编译 TypeScript 代码
-RUN npm run build
+RUN mkdir -p /app/images /app/remove /app/data \
+    && chown -R app:app /app
 
-# 清理开发依赖以减小镜像大小
-RUN npm prune --production && rm -rf node_modules/@types
+USER app
 
-# 创建必要的目录
-RUN mkdir -p /app/images /app/remove
-
-# 暴露端口
 EXPOSE 3000
 
-# 设置环境变量
-ENV PORT=3000
-ENV IMAGES_DIR=/app/images
-ENV NODE_ENV=production
+# 使用无需登录的健康检查接口
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q --spider http://127.0.0.1:3000/api/health || exit 1
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/auth/status || exit 1
-
-# 启动命令
-CMD ["npm", "run", "serve"]
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "dist/server.js"]

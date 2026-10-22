@@ -1,100 +1,199 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>图片浏览 - 瀑布流展示</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="私有图片浏览器：瀑布流浏览、收藏、回收站与本地图片目录管理">
+  <title>IMG BROWSER · 图片浏览</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <header class="header">
-        <div class="container">
-            <div class="header-top">
-                <h1><i class="fas fa-images"></i> IMG BROWSER</h1>
-          <button id="logoutBtn" class="logout-btn" title="登出" aria-label="退出登录">
-                     <i class="fas fa-sign-out-alt"></i> LOGOUT
-                 </button>
-            </div>
-            <p class="subtitle">Visual Experience Redefined</p>
-            <div class="stats">
-                <span id="total-images">0 IMAGES</span>
-                <span id="loaded-count">LOADED 0</span>
-            </div>
-        </div>
-    </header>
+  <!-- 图标精灵：全部内联，离线环境也不会变成方块 -->
+  <svg class="sprite-sheet" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></symbol>
+      <symbol id="i-masonry" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="10" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/><rect x="14" y="3" width="7" height="6" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+      <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+      <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
+      <symbol id="i-zoom-in" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M11 8v6"/><path d="M8 11h6"/></symbol>
+      <symbol id="i-zoom-out" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M8 11h6"/></symbol>
+      <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    </defs>
+  </svg>
 
-    <main class="container">
-        <div class="controls">
-            <div class="view-options" role="group" aria-label="视图模式">
-                <button class="btn active" data-view="waterfall" aria-label="瀑布流视图" role="radio" aria-checked="true"><i class="fas fa-th"></i> WATERFALL</button>
-                <button class="btn" data-view="grid" aria-label="网格视图" role="radio" aria-checked="false"><i class="fas fa-grid"></i> GRID</button>
-                <button class="btn" data-view="list" aria-label="列表视图" role="radio" aria-checked="false"><i class="fas fa-list"></i> LIST</button>
-            </div>
-            <div class="nav-tabs" role="tablist" aria-label="图片分类">
-                <button class="tab-btn active" data-show="all" aria-label="所有图片" role="tab" aria-selected="true"><i class="fas fa-images"></i> ALL</button>
-                <button class="tab-btn" data-show="favorites" aria-label="收藏的图片" role="tab" aria-selected="false"><i class="fas fa-heart"></i> FAVORITES</button>
-                <button class="tab-btn" data-show="deleted" aria-label="回收站" role="tab" aria-selected="false"><i class="fas fa-trash"></i> TRASH</button>
-            </div>
-            <div class="sort-options">
-                <label for="sort">SORT BY:</label>
-                <select id="sort" aria-label="排序方式">
-                    <option value="name">NAME</option>
-                    <option value="newest">NEWEST</option>
-                    <option value="oldest">OLDEST</option>
-                </select>
-            </div>
-        </div>
+  <header class="app-header">
+    <div class="container header-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark">
+          <svg class="icon" aria-hidden="true"><use href="#i-image"/></svg>
+        </span>
+        <span class="brand-text">
+          <h1>IMG BROWSER</h1>
+          <small>PRIVATE IMAGE LIBRARY</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <button id="scanBtn" type="button" class="btn btn-ghost" title="重新扫描图片目录">
+          <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>
+          <span>RESCAN</span>
+        </button>
+        <button id="logoutBtn" type="button" class="btn btn-ghost" title="退出登录">
+          <svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg>
+          <span>LOGOUT</span>
+        </button>
+      </div>
+    </div>
+  </header>
 
-        <div id="gallery" class="gallery waterfall">
-            <!-- 图片将通过 JS 动态插入 -->
-        </div>
-
-        <div id="loading" class="loading">
-            <p>LOADING MORE IMAGES...</p>
-        </div>
-
-        <div id="end-message" class="end-message">
-            <p><i class="fas fa-flag-checkered"></i> ALL IMAGES LOADED</p>
-        </div>
-
-        <!-- 大图查看模态框 -->
-        <div id="image-modal" class="image-modal" role="dialog" aria-modal="true" aria-labelledby="modal-filename">
-            <div class="modal-content">
-                <button class="modal-close" aria-label="关闭"><i class="fas fa-times"></i></button>
-                <div class="modal-image-container">
-                    <img id="modal-image" src="" alt="">
-                    <div class="modal-controls">
-                         <button class="modal-btn prev-btn" aria-label="上一张"><i class="fas fa-chevron-left"></i></button>
-                         <button class="modal-btn next-btn" aria-label="下一张"><i class="fas fa-chevron-right"></i></button>
-                         <button class="modal-btn favorite-btn" aria-label="收藏"><i class="fas fa-heart"></i></button>
-                         <button class="modal-btn delete-btn" aria-label="删除"><i class="fas fa-trash"></i></button>
-                         <button class="modal-btn zoom-btn" aria-label="放大"><i class="fas fa-search-plus"></i></button>
-                     </div>
-                </div>
-                <div class="modal-info">
-                    <h3 id="modal-filename"></h3>
-                    <p id="modal-details"></p>
-                </div>
-            </div>
+  <main class="container">
+    <section class="toolbar" aria-label="浏览控制">
+      <div class="toolbar-row">
+        <div class="segmented" role="group" aria-label="视图模式">
+          <button type="button" class="seg-btn is-active" data-view="waterfall" aria-pressed="true" title="瀑布流">
+            <svg class="icon" aria-hidden="true"><use href="#i-masonry"/></svg><span>瀑布流</span>
+          </button>
+          <button type="button" class="seg-btn" data-view="grid" aria-pressed="false" title="网格">
+            <svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg><span>网格</span>
+          </button>
+          <button type="button" class="seg-btn" data-view="list" aria-pressed="false" title="列表">
+            <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg><span>列表</span>
+          </button>
         </div>
 
-        <div class="back-to-top">
-            <button id="backToTop" class="btn-top" aria-label="返回顶部"><i class="fas fa-chevron-up"></i></button>
+        <div class="tabs" role="tablist" aria-label="图片分类">
+          <button type="button" class="tab is-active" role="tab" aria-selected="true" data-show="all">
+            <svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><span>全部</span>
+          </button>
+          <button type="button" class="tab" role="tab" aria-selected="false" data-show="favorites">
+            <svg class="icon" aria-hidden="true"><use href="#i-heart"/></svg><span>收藏</span>
+          </button>
+          <button type="button" class="tab" role="tab" aria-selected="false" data-show="trash">
+            <svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>回收站</span>
+            <span class="tab-badge" id="trashBadge" hidden>0</span>
+          </button>
         </div>
-    </main>
 
-    <footer class="footer">
-        <div class="container">
-            <p>BUILT WITH TYPESCRIPT + NODE.JS • IMAGES FROM <code>IMAGES/</code> DIRECTORY</p>
-            <p class="links">
-                <a href="/api/images" target="_blank"><i class="fas fa-code"></i> API DOCS</a>
-                <a href="https://github.com" target="_blank"><i class="fab fa-github"></i> GITHUB</a>
-            </p>
+        <div class="search">
+          <svg class="icon search-icon" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="searchInput" type="search" placeholder="搜索文件名…" aria-label="搜索文件名" autocomplete="off" spellcheck="false">
+          <button id="searchClear" type="button" class="search-clear" aria-label="清除搜索" hidden>
+            <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+          </button>
         </div>
-    </footer>
 
-    <script src="script.js"></script>
+        <label class="sort">
+          <span class="sort-label">排序</span>
+          <select id="sortSelect" aria-label="排序方式">
+            <option value="name">文件名</option>
+            <option value="newest">最新优先</option>
+            <option value="oldest">最旧优先</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="toolbar-row toolbar-meta">
+        <p id="summary" class="summary" aria-live="polite">正在加载…</p>
+        <button id="emptyTrashBtn" type="button" class="btn btn-danger" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>
+          <span>清空回收站</span>
+        </button>
+      </div>
+    </section>
+
+    <h2 class="visually-hidden">图片列表</h2>
+    <div id="gallery" class="gallery view-waterfall" aria-busy="false"></div>
+
+    <div id="emptyState" class="state-panel" hidden>
+      <svg class="state-icon" aria-hidden="true"><use href="#i-inbox"/></svg>
+      <h2 id="emptyTitle">这里还没有图片</h2>
+      <p id="emptyHint"></p>
+      <button id="emptyAction" type="button" class="btn btn-primary" hidden>重新扫描</button>
+    </div>
+
+    <div id="errorState" class="state-panel state-error" hidden>
+      <svg class="state-icon" aria-hidden="true"><use href="#i-alert"/></svg>
+      <h2>加载失败</h2>
+      <p id="errorText"></p>
+      <button id="retryBtn" type="button" class="btn btn-primary">重试</button>
+    </div>
+
+    <div id="sentinel" class="sentinel" aria-hidden="true"></div>
+
+    <div id="loading" class="loading" hidden>
+      <span class="loading-ring" aria-hidden="true"></span>
+      <span>加载中…</span>
+    </div>
+
+    <p id="endMessage" class="end-message" hidden>已经到底啦</p>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>本地图片目录 · 数据只保存在你自己的机器上</p>
+    </div>
+  </footer>
+
+  <button id="backToTop" type="button" class="to-top" aria-label="回到顶部" hidden>
+    <svg class="icon" aria-hidden="true"><use href="#i-chevron-up"/></svg>
+  </button>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
+    <div class="modal-backdrop" data-close="1"></div>
+
+    <div class="modal-stage">
+      <img id="modalImage" alt="" draggable="false">
+      <button type="button" class="modal-nav prev" id="prevBtn" aria-label="上一张">
+        <svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg>
+      </button>
+      <button type="button" class="modal-nav next" id="nextBtn" aria-label="下一张">
+        <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+      </button>
+    </div>
+
+    <div class="modal-bar">
+      <div class="modal-caption">
+        <h2 id="modalTitle"></h2>
+        <p id="modalMeta"></p>
+      </div>
+      <div class="modal-tools">
+        <button type="button" class="icon-btn" id="modalFavorite" aria-label="收藏">
+          <svg class="icon" aria-hidden="true"><use href="#i-heart"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="modalDelete" aria-label="删除">
+          <svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="modalZoomOut" aria-label="缩小">
+          <svg class="icon" aria-hidden="true"><use href="#i-zoom-out"/></svg>
+        </button>
+        <span class="zoom-level" id="zoomLevel">100%</span>
+        <button type="button" class="icon-btn" id="modalZoomIn" aria-label="放大">
+          <svg class="icon" aria-hidden="true"><use href="#i-zoom-in"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <button type="button" class="modal-close" id="modalClose" aria-label="关闭">
+      <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+    </button>
+  </div>
+
+  <script src="/script.js"></script>
 </body>
 </html>
