@@ -25,6 +25,12 @@ images/
 .env.local
 .env.*.local
 
+# TLS 证书与私钥：自签证书和私钥绝不提交
+certs/
+*.pem
+*.key
+*.pfx
+
 # IDE / 系统文件
 .vscode/
 .idea/

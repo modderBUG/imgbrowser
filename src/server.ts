@@ -2,6 +2,8 @@ import express, { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
 import { config, IMAGE_EXTENSIONS } from './config';
 import {
@@ -551,13 +553,90 @@ const cleanupTimer = setInterval(() => {
 }, 10 * 60 * 1000);
 cleanupTimer.unref?.();
 
-const server = app.listen(config.port, config.host, async () => {
+/* ------------------------------------------------------------------ */
+/* HTTPS（可选）                                                       */
+/* ------------------------------------------------------------------ */
+
+interface TlsSetup {
+  options: https.ServerOptions;
+  certificate: crypto.X509Certificate;
+}
+
+/**
+ * 只有同时配置 TLS_CERT 与 TLS_KEY 才启用 HTTPS。
+ * 证书与私钥只从本机读取，不会随任何请求发送；
+ * 配合 frp 的 tcp 隧道时，frps 只能转发加密字节。
+ */
+function loadTls(): TlsSetup | null {
+  if (!config.tlsCert) return null;
+
+  for (const file of [config.tlsCert, config.tlsKey]) {
+    if (!fs.existsSync(file)) {
+      console.error(`ERROR: TLS 文件不存在：${file}`);
+      process.exit(1);
+    }
+  }
+
+  let certPem = Buffer.alloc(0);
+  let keyPem = Buffer.alloc(0);
+  try {
+    certPem = fs.readFileSync(config.tlsCert);
+    keyPem = fs.readFileSync(config.tlsKey);
+  } catch (err) {
+    console.error(`ERROR: 读取 TLS 文件失败：${(err as Error).message}`);
+    process.exit(1);
+  }
+
+  let certificate: crypto.X509Certificate;
+  try {
+    certificate = new crypto.X509Certificate(certPem);
+  } catch (err) {
+    console.error(`ERROR: 证书格式不合法：${(err as Error).message}`);
+    process.exit(1);
+  }
+
+  return {
+    options: {
+      cert: certPem,
+      key: keyPem,
+      passphrase: config.tlsPassphrase || undefined,
+      minVersion: 'TLSv1.2',
+    },
+    certificate,
+  };
+}
+
+const tls = loadTls();
+
+const server: http.Server | https.Server = (() => {
+  try {
+    return tls ? https.createServer(tls.options, app) : http.createServer(app);
+  } catch (err) {
+    console.error(`ERROR: 创建 HTTPS 服务失败（证书与私钥是否匹配？）：${(err as Error).message}`);
+    process.exit(1);
+  }
+})();
+
+server.listen(config.port, config.host, async () => {
   console.log('');
   console.log(`  ImgBrowser v${config.version} 已启动`);
-  console.log(`  地址      http://localhost:${config.port}`);
+  console.log(`  地址      ${tls ? 'https' : 'http'}://localhost:${config.port}`);
   console.log(`  图片目录  ${config.imagesDir}`);
   console.log(`  回收站    ${config.trashDir}`);
   console.log(`  数据库    ${config.dbPath}`);
+
+  if (tls) {
+    const expires = new Date(tls.certificate.validTo);
+    console.log(`  证书      ${tls.certificate.subject.replace(/\n/g, ', ')}`);
+    console.log(`  到期      ${expires.toISOString().slice(0, 10)}`);
+    const daysLeft = Math.floor((expires.getTime() - Date.now()) / 86_400_000);
+    if (daysLeft < 0) {
+      console.warn('[tls] 警告：证书已过期，浏览器会拒绝连接，请重新生成');
+    } else if (daysLeft < 30) {
+      console.warn(`[tls] 警告：证书将在 ${daysLeft} 天后过期`);
+    }
+  }
+
   console.log('');
 
   try {

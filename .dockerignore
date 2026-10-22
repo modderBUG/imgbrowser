@@ -11,6 +11,12 @@ images/
 remove/
 *.log
 
+# TLS 证书与私钥：运行时挂载，绝不进入镜像
+certs/
+*.pem
+*.key
+*.pfx
+
 # 版本控制与编辑器
 .git
 .gitignore

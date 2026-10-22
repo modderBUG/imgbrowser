@@ -14,16 +14,23 @@ services:
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-24}
       MAX_PAGE_SIZE: ${MAX_PAGE_SIZE:-100}
       TRUST_PROXY: ${TRUST_PROXY:-0}
+      # 可选 HTTPS：在 .env 里设置 TLS_CERT / TLS_KEY 后自动生效
+      TLS_CERT: ${TLS_CERT:-}
+      TLS_KEY: ${TLS_KEY:-}
+      TLS_KEY_PASSPHRASE: ${TLS_KEY_PASSPHRASE:-}
       NODE_ENV: production
     volumes:
       # 图片库：把宿主机上的图片目录挂载进来（请先手动创建该目录）
       - ./images:/app/images
+      # 自签证书：只有启用 HTTPS 时才需要
+      - ./certs:/app/certs:ro
       # 回收站与数据库用命名卷，避免宿主机目录属主与容器内非 root 用户不一致
       - imgbrowser-trash:/app/remove
       - imgbrowser-data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:3000/api/health']
+      # 同时兼容 HTTP 与 HTTPS（HTTPS 下跳过自签证书校验）
+      test: ['CMD', 'node', '-e', "const tls=!!process.env.TLS_CERT;const h=require(tls?'node:https':'node:http');h.get((tls?'https':'http')+'://127.0.0.1:3000/api/health',{rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3

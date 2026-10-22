@@ -42,9 +42,9 @@ USER app
 
 EXPOSE 3000
 
-# 使用无需登录的健康检查接口
+# 使用无需登录的健康检查接口；配置 TLS_CERT 后自动改用 https 并跳过自签证书校验
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -q --spider http://127.0.0.1:3000/api/health || exit 1
+  CMD node -e "const tls=!!process.env.TLS_CERT;const h=require(tls?'node:https':'node:http');h.get((tls?'https':'http')+'://127.0.0.1:3000/api/health',{rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/server.js"]

@@ -2,6 +2,20 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 新增
+
+- **可选 HTTPS**：配置 `TLS_CERT` / `TLS_KEY` 后 Node 直接以 HTTPS 监听，TLS 终止在本机；配合 frp 的 `type = "tcp"` 隧道时，frp 服务商只能转发密文，看不到图片内容。两项都不配置时行为不变，仍是 HTTP。
+- 启动日志打印证书主题与到期日，证书过期或 30 天内到期时给出警告。
+- `scripts/new-cert.ps1`：一条命令生成带 IP/域名 SAN 的自签证书，自动探测 PATH 与 Git for Windows 的 openssl。
+- Docker 健康检查同时兼容 HTTP / HTTPS；`docker-compose.yml` 挂载 `./certs` 并透传 TLS 配置。
+
+### 变更
+
+- `.gitignore` / `.dockerignore` 排除证书与私钥，避免误提交或打进镜像。
+- `TLS_CERT`、`TLS_KEY` 只配置一项时启动失败并给出修复提示。
+
 ## [1.1.0] - 2026-10-22
 
 一次以「修复不合理实现 + 提升可用性」为目标的整理，接口有少量破坏性变更（见文末）。

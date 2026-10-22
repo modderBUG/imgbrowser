@@ -80,6 +80,9 @@ npm run build && npm run serve
 | `MAX_PAGE_SIZE` | `100` | 接口单页最大条数，超出会被截断 |
 | `DEFAULT_PAGE_SIZE` | `24` | 未传 `limit` 时的默认条数 |
 | `TRUST_PROXY` | `0` | 置于 Nginx/Caddy 之后时设为 `1`，用于取真实 IP 与 `https` 协议 |
+| `TLS_CERT` | - | HTTPS 证书路径；与 `TLS_KEY` 同时配置才启用 HTTPS |
+| `TLS_KEY` | - | HTTPS 私钥路径；只配一项会启动失败 |
+| `TLS_KEY_PASSPHRASE` | - | 私钥口令（`openssl -nodes` 生成的自签私钥不需要） |
 | `NODE_ENV` | - | 设为 `production` 时行为不变，仅供部署环境标注 |
 
 相对路径一律基于**启动进程的工作目录**（即项目根目录）解析。
@@ -107,8 +110,113 @@ docker run -d --name imgbrowser -p 8211:3000 \
   imgbrowser
 ```
 
+需要 HTTPS 时，把证书放到 `./certs/`，在 `.env` 中设置 `TLS_CERT` / `TLS_KEY` 后重新 `docker compose up -d`。
+
 > **Linux 权限提示**：容器内用户是 uid 1000。若宿主机的 `images` 目录属于其他用户，
 > 恢复图片时会写入失败；可用 `chown -R 1000:1000 images`，或在 compose 中加 `user: "$(id -u):$(id -g)"`。
+> 启用 HTTPS 时同样要保证 uid 1000 能读 `certs/key.pem`：优先 `chown 1000:1000 certs/key.pem && chmod 600 certs/key.pem`；只在确认本机没有其他用户时才用 `chmod 644`。
+
+## 公网访问：frp TCP + 自签 HTTPS
+
+目标：照片在本机**明文保存**，浏览器到本机全程 TLS；frp 服务商只转发加密字节，看不到图片内容。
+
+> 前提是 frp 使用 `type = "tcp"` 隧道。`type = "http"` / `"https"` 会让 frps 终止 TLS（证书配在 frps 一侧），服务商能在内存里看到明文。
+
+### 1. 生成自签证书
+
+```powershell
+# Windows：参数换成你 frp 服务器的公网 IP；用域名访问就填域名
+powershell -ExecutionPolicy Bypass -File ./scripts/new-cert.ps1 1.2.3.4
+```
+
+```bash
+# Linux / macOS：等价的原生 openssl 命令
+mkdir -p certs
+openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
+  -keyout certs/key.pem -out certs/cert.pem \
+  -subj "/CN=1.2.3.4" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:1.2.3.4"
+```
+
+脚本会探测 PATH、Git for Windows 的 `mingw64` / `usr` 目录下的 openssl，在 `certs/` 生成 `cert.pem` 与 `key.pem`，
+SAN 同时包含 `localhost`、`127.0.0.1` 和目标地址。没有 openssl 时按提示安装 Git for Windows 或 mkcert。
+
+### 2. 开启 HTTPS
+
+在 `.env` 中取消注释：
+
+```ini
+TLS_CERT=./certs/cert.pem
+TLS_KEY=./certs/key.pem
+```
+
+重启服务：
+
+```powershell
+npm run build
+npm run serve
+```
+
+启动日志会显示 `https://localhost:3000`，并打印证书主题与到期日。
+先在本机打开 `https://localhost:3000`，证书警告选择继续，确认登录与图片浏览正常后再配置 frp。
+
+### 3. 配置 frp
+
+`frps.toml`（VPS）：
+
+```toml
+bindPort = 7000
+auth.method = "token"
+auth.token = "换成一串随机值"
+transport.tls.force = true
+
+# 关键：不要启用 vhostHTTPSPort，443 要留给 TCP 隧道
+# 可选加固：只允许映射 443
+allowPorts = [{ single = 443 }]
+```
+
+`frpc.toml`（本机）：
+
+```toml
+serverAddr = "VPS_IP"
+serverPort = 7000
+auth.method = "token"
+auth.token = "同一串随机值"
+transport.tls.enable = true
+
+[[proxies]]
+name = "imgbrowser-https"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3000
+remotePort = 443
+```
+
+重启 frpc，访问 `https://VPS_IP`。
+如果 VPS 的 443 已被 nginx 等占用，把 `remotePort` 改成 `8443`，访问 `https://VPS_IP:8443`。
+Docker 部署时，`localPort` 要指向宿主机映射端口（默认 `8211`），而不是容器内的 3000。
+
+> frps 绑定 443 需要 root 或 `CAP_NET_BIND_SERVICE`。`transport.tls` 只保护 frpc↔frps 这一段，不改变浏览器到源站的 TLS 终止点。
+
+### 4. 验证服务商看不到内容
+
+- 浏览器地址栏的证书必须是你的自签证书（或你自己的域名），不能是 frp 服务商提供的域名证书。
+- 自建 frps 时，在 VPS 上抓包：
+
+```bash
+sudo tcpdump -A -s0 tcp port 443 | grep -a "GET /images"
+```
+
+应该搜不到任何 HTTP 请求，只能看到 TLS 握手和随机字节。
+
+### 5. 注意事项
+
+- **不要用服务商给的子域名配 CA 证书**：域名在它手里，它可以给自己签一张来 MITM。用你的公网 IP 或自己的域名。
+- **TCP 模式下 Node 看到的客户端 IP 都是 `127.0.0.1`**，登录限流会退化成全局限流：连续输错 5 次锁 15 分钟。个人使用可接受；被恶意锁定时重启进程即可解锁（会话也会一起失效）。
+- 自签证书默认 825 天，启动日志会打印到期日；到期前重新执行第 1 步并重启。
+- 公网 IP 变化后证书 SAN 会不匹配，需要重新生成。
+- `certs/key.pem` 是明文私钥：不要提交、不要放同步盘或共享目录；Linux 下 `chmod 600`。
+- 不需要再叠加应用层加密：照片明文存在本机，服务端本身就是信任根；TLS 终止在本机时，服务商只能看到密文。
 
 ## API
 
@@ -220,6 +328,8 @@ imgbrowser/
 │   ├── style.css
 │   ├── login.html / login.css / login.js
 │   └── favicon.svg
+├── scripts/new-cert.ps1 # 生成自签 HTTPS 证书（带 IP/域名 SAN）
+├── certs/               # 自签证书与私钥（运行时生成，已 gitignore）
 ├── docs/screenshots/    # 文档截图
 ├── images/              # 默认图片库目录（被 .gitignore 忽略）
 ├── remove/              # 回收站（运行时创建）
@@ -238,6 +348,7 @@ imgbrowser/
 - 静态资源走白名单路由，`/images`、`/removed` 自行解析路径并做 `path.resolve` 前缀校验，阻止 `../` 穿越
 - CSP 仅允许同源脚本与样式（前端已无任何 CDN 依赖），并附带 `nosniff` / `X-Frame-Options` / `Referrer-Policy`
 - 登录使用 SHA-256 + `timingSafeEqual` 常量时间比较，配合按 IP 的失败计数限流
+- HTTPS 可选：配置 `TLS_CERT` / `TLS_KEY` 后 Node 直接监听 HTTPS，证书与私钥只从本机读取；配合 frp `tcp` 隧道时服务商只能转发密文
 
 **性能**
 
@@ -287,6 +398,12 @@ imgbrowser/
 
 **反向代理后登录一直失败/限流失效？**
 设置 `TRUST_PROXY=1`，让服务端从 `X-Forwarded-For` / `X-Forwarded-Proto` 取真实信息。
+
+**开启 HTTPS 后 http:// 打不开？**
+服务只监听 HTTPS，改用 `https://`。首次访问自签证书会有安全警告，核对证书主题后选择继续；想彻底去掉警告可以用 mkcert 或自己的域名 + Let's Encrypt。
+
+**浏览器提示“证书无效/不受信任”？**
+自签证书的正常现象。确认地址栏证书主题是 `CN=<你的 IP 或域名>` 再继续；如果显示的是 frp 服务商的域名证书，说明 TLS 在服务商侧终止，需要把隧道改成 `type = "tcp"`。
 
 ## 开发命令
 

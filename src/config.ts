@@ -100,6 +100,28 @@ if (password.length < 8) {
   console.warn('[config] APP_PASSWORD 少于 8 位，公网部署时存在被暴力破解的风险');
 }
 
+/*
+ * HTTPS 是可选的：TLS_CERT 与 TLS_KEY 必须同时配置。
+ * 之所以在这里就报错退出，是为了避免服务先启动、扫描完图片、
+ * 直到 listen 时才因为证书路径写错而失败。
+ */
+const tlsCert = (process.env.TLS_CERT ?? '').trim();
+const tlsKey = (process.env.TLS_KEY ?? '').trim();
+
+if (Boolean(tlsCert) !== Boolean(tlsKey)) {
+  console.error(
+    [
+      'ERROR: TLS_CERT 与 TLS_KEY 必须同时配置。',
+      '  启用 HTTPS：两项都指向证书文件，例如',
+      '    TLS_CERT=./certs/cert.pem',
+      '    TLS_KEY=./certs/key.pem',
+      '  保持 HTTP：两项都留空。',
+      '  生成自签证书：powershell -ExecutionPolicy Bypass -File ./scripts/new-cert.ps1 <公网IP或域名>',
+    ].join('\n')
+  );
+  process.exit(1);
+}
+
 export const config = {
   port: readInt('PORT', 3000, 1, 65535),
   host: (process.env.HOST ?? '').trim() || '0.0.0.0',
@@ -119,6 +141,12 @@ export const config = {
   defaultLimit: readInt('DEFAULT_PAGE_SIZE', 24, 1, 1000),
   /** 部署在 Nginx 等反向代理之后时设为 1，才能拿到真实 IP 与 https 协议 */
   trustProxy: readBool('TRUST_PROXY', false),
+  /** TLS 证书路径；为空表示不启用 HTTPS */
+  tlsCert: tlsCert ? resolvePath(tlsCert, '') : '',
+  /** TLS 私钥路径；与 tlsCert 同时为空或同时非空 */
+  tlsKey: tlsKey ? resolvePath(tlsKey, '') : '',
+  /** 私钥口令；openssl -nodes 生成的私钥不需要 */
+  tlsPassphrase: process.env.TLS_KEY_PASSPHRASE ?? '',
   isProduction: process.env.NODE_ENV === 'production',
   version: readVersion(),
 } as const;
